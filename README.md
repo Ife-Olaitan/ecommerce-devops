@@ -1,3 +1,3 @@
 # ecommerce-devops
 
-omo work dey.
+omo work dey - i know what i'm doing now.

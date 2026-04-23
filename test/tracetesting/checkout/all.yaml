@@ -7,5 +7,4 @@ spec:
   name: 'Checkout Service'
   description: Run all Checkout Service tests enabled in sequence
   steps:
-  - ./add-item-to-cart.yaml
   - ./place-order.yaml

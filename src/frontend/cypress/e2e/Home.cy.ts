@@ -3,8 +3,7 @@
 
 import getSymbolFromCurrency from 'currency-symbol-map';
 import SessionGateway from '../../gateways/Session.gateway';
-import { getElementByField } from '../../utils/Cypress';
-import { CypressFields } from '../../utils/enums/CypressFields';
+import { CypressFields, getElementByField } from '../../utils/Cypress';
 
 describe('Home Page', () => {
   beforeEach(() => {

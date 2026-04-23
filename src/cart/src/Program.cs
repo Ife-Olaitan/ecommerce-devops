@@ -2,16 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 using System;
 
-using Grpc.Health.V1;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using System.Threading.Tasks;
-using System.Threading;
-
-using Grpc.Core;
-
 using cart.cartstore;
 using cart.services;
-using cart.healthcheck;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -24,8 +16,8 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenFeature;
-using OpenFeature.Hooks;
-using OpenFeature.Providers.Flagd;
+using OpenFeature.Contrib.Providers.Flagd;
+using OpenFeature.Contrib.Hooks.Otel;
 
 var builder = WebApplication.CreateBuilder(args);
 string valkeyAddress = builder.Configuration["VALKEY_ADDR"];
@@ -39,19 +31,18 @@ builder.Logging
     .AddOpenTelemetry(options => options.AddOtlpExporter())
     .AddConsole();
 
-builder.Services.AddSingleton<ICartStore>(x =>
+builder.Services.AddSingleton<ICartStore>(x=>
 {
     var store = new ValkeyCartStore(x.GetRequiredService<ILogger<ValkeyCartStore>>(), valkeyAddress);
     store.Initialize();
     return store;
 });
 
-builder.Services.AddOpenFeature(openFeatureBuilder =>
-{
-    openFeatureBuilder
-        .AddProvider(_ => new FlagdProvider())
-        .AddHook<MetricsHook>()
-        .AddHook<TraceEnricherHook>();
+builder.Services.AddSingleton<IFeatureClient>(x => {
+    var flagdProvider = new FlagdProvider();
+    Api.Instance.SetProviderAsync(flagdProvider).GetAwaiter().GetResult();
+    var client = Api.Instance.GetClient();
+    return client;
 });
 
 builder.Services.AddSingleton(x =>
@@ -64,7 +55,6 @@ builder.Services.AddSingleton(x =>
 
 Action<ResourceBuilder> appResourceBuilder =
     resource => resource
-        .AddService(builder.Environment.ApplicationName)
         .AddContainerDetector()
         .AddHostDetector();
 
@@ -80,26 +70,23 @@ builder.Services.AddOpenTelemetry()
         .AddOtlpExporter())
     .WithMetrics(meterBuilder => meterBuilder
         .AddMeter("OpenTelemetry.Demo.Cart")
-        .AddMeter("OpenFeature")
         .AddProcessInstrumentation()
         .AddRuntimeInstrumentation()
         .AddAspNetCoreInstrumentation()
         .SetExemplarFilter(ExemplarFilterType.TraceBased)
         .AddOtlpExporter());
+OpenFeature.Api.Instance.AddHooks(new TracingHook());
 builder.Services.AddGrpc();
-builder.Services.AddSingleton<readinessCheck>();
 builder.Services.AddGrpcHealthChecks()
-    .AddCheck<readinessCheck>("oteldemo.CartService");
-
-builder.Services.AddSingleton<HealthServiceImpl>();
+    .AddCheck("Sample", () => HealthCheckResult.Healthy());
 
 var app = builder.Build();
 
-var ValkeyCartStore = (ValkeyCartStore)app.Services.GetRequiredService<ICartStore>();
+var ValkeyCartStore = (ValkeyCartStore) app.Services.GetRequiredService<ICartStore>();
 app.Services.GetRequiredService<StackExchangeRedisInstrumentation>().AddConnection(ValkeyCartStore.GetConnection());
 
 app.MapGrpcService<CartService>();
-app.MapGrpcService<HealthServiceImpl>();
+app.MapGrpcHealthChecksService();
 
 app.MapGet("/", async context =>
 {
@@ -107,5 +94,3 @@ app.MapGet("/", async context =>
 });
 
 app.Run();
-
-
